@@ -1,4 +1,4 @@
-name: Cloud PC + Web Browser Link + Opera GX (Official Fixed Release)
+name: Cloud PC + Web Browser Link + Opera GX (Tunnel Sync Fix)
 
 on:
   workflow_dispatch:
@@ -83,8 +83,7 @@ jobs:
           Expand-Archive -Path "novnc.zip" -DestinationPath "C:\noVNC" -Force
           Copy-Item -Path "C:\noVNC\noVNC-1.5.0\*" -Destination "C:\noVNC" -Recurse -Force
           
-          Write-Host "Downloading Cloudflare binary from official production releases branch..."
-          # Uses the direct official Cloudflare production endpoint to guarantee zero download crashes
+          Write-Host "Downloading Cloudflare binary from official production branch..."
           $cldUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
           Invoke-WebRequest -Uri $cldUrl -OutFile "tunnel.exe" -UserAgent "Mozilla/5.0"
 
@@ -92,13 +91,15 @@ jobs:
         run: |
           Write-Host "Bridging VNC to Web Ports..."
           Start-Process websockify -ArgumentList "8080 localhost:5900 --web C:\noVNC"
-          Start-Sleep -Seconds 3
+          
+          Write-Host "Giving internal web server 15 seconds to fully bind ports..."
+          Start-Sleep -Seconds 15
           
           Write-Host "Creating Public High-Speed HTTP Web Proxy..."
           $LogFile = "$env:TEMP\tunnel.log"
-          # Initiates a free, secure, ephemeral Cloudflare Quick Tunnel link to the web port
-          Start-Process .\tunnel.exe -ArgumentList "tunnel", "--url", "http://localhost:8080" -RedirectStandardError $LogFile
-          Start-Sleep -Seconds 8
+          # explicitly targeting 127.0.0.1 loopback rules out 530 unregistration drops
+          Start-Process .\tunnel.exe -ArgumentList "tunnel", "--url", "http://127.0.0.1:8080" -RedirectStandardError $LogFile
+          Start-Sleep -Seconds 10
           
           $WebLink = "Failed to generate link"
           if (Test-Path $LogFile) {
