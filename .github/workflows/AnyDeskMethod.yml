@@ -1,4 +1,4 @@
-name: Cloud PC + AnyDesk + Opera GX (Stable Restored Layout)
+name: Cloud PC + AnyDesk + Opera GX (Ultimate Fix)
 
 on:
   workflow_dispatch:
@@ -44,12 +44,20 @@ jobs:
           Start-Sleep -Seconds 5
           Remove-Item $dst -ErrorAction SilentlyContinue
 
-      - name: Configure Unattended Access Password & Touch Settings
+      - name: Configure Unattended Access Password & Hide Tray Apps
         run: |
           $ad = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
           if (-not (Test-Path $ad)) { $ad = "C:\Program Files\AnyDesk\AnyDesk.exe" }
           
+          # Force register the system service layer to bind security permissions properly
+          Start-Process -FilePath $ad -ArgumentList "--register-service" -Wait
+          Start-Sleep -Seconds 2
+          
+          # Set password access cleanly
           cmd.exe /c "echo ${{ env.ANYDESK_PASS }} | `"$ad`" --set-password"
+          
+          # Inject full input accessibility rights to enable mobile touch scrolling and override guest mode locks
+          New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableUIADesktopToggle" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
           
           $path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
           Set-ItemProperty -Path $path -Name "TaskbarGlomLevel" -Value 0 -ErrorAction SilentlyContinue
@@ -57,53 +65,42 @@ jobs:
           Start-Process -FilePath $ad -ArgumentList "--restart-service" -Wait
           Start-Sleep -Seconds 5
 
-      - name: Clean and Hide Active Infrastructure Windows
+      - name: Minimize Running Infrastructure Windows
         run: |
-          Write-Host "Safely minimizing active desktop console layout..."
-          # Emulates a native Windows shell command to safely minimize the active interface frame
-          (New-Object -ComObject Shell.Application).UndoMinimizeAll()
-          Start-Sleep -Seconds 1
-          $wsh = New-Object -ComObject WScript.Shell
-          # Sends Alt+Space then 'n' to minimize the active window natively without breaking process structures
-          $wsh.SendKeys("% n")
+          Write-Host "Sending active command prompt windows to the taskbar tray..."
+          $shell = New-Object -ComObject Shell.Application
+          $shell.MinimizeAll()
 
       - name: Optimize Resolution for Mobile Display
         run: |
           Write-Host "Forcing resolution calibration matrix..."
           Set-DisplayResolution -Width 1280 -Height 720 -Force -ErrorAction SilentlyContinue
 
-      - name: Download & Pre-Install Opera GX
+      - name: Download & Force Consumer Build of Opera GX
         run: |
-          Write-Host "Fetching Opera GX Setup..."
+          Write-Host "Fetching consumer-stable Opera GX Core..."
           $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx"
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          Write-Host "Installing Opera GX with absolute silent defaults..."
-          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=0", "--no-first-run" -Wait
-          Start-Sleep -Seconds 5
-          Remove-Item $installer -ErrorAction SilentlyContinue
-
-      - name: Create Specialized Target Link for Rewards Launch
-        run: |
-          Write-Host "Wiping default setup shortcuts to prevent duplicate icons..."
+          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
+          
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
           
-          Get-ChildItem -Path $publicDesktop, $userDesktop -Filter "*Opera*.lnk" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-
-          Write-Host "Locating operational browser binary execution path..."
-          $operaExe = "C:\Program Files\Opera GX\opera.exe"
-          if (-not (Test-Path $operaExe)) { $operaExe = "C:\Program Files (x86)\Opera GX\opera.exe" }
-          if (-not (Test-Path $operaExe)) { $operaExe = "$env:LOCALAPPDATA\Programs\Opera GX\opera.exe" }
+          if (Test-Path "$userDesktop\Opera GX.lnk") {
+              Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
+          }
           
-          Write-Host "Building dedicated desktop launcher link..."
+          Write-Host "Configuring explicit launcher shortcut with forced profile engine routing..."
+          $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
+          if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
+          
           $WshShell = New-Object -ComObject WScript.Shell
-          $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX.lnk")
+          $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
           $Shortcut.TargetPath = $operaExe
-          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run"
+          $Shortcut.Arguments = "--enable-features=GXRewards,GXRewardsSidebarItem --with-feature:gx-rewards=1"
           $Shortcut.Save()
-          Write-Host "Shortcut generated successfully."
 
       - name: Fetch and Display AnyDesk Connection Address
         run: |
