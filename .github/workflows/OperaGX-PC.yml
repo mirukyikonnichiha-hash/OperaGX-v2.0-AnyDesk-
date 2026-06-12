@@ -73,21 +73,34 @@ jobs:
 
       - name: Download & Pre-Install Opera GX
         run: |
-          Write-Host "Fetching Opera GX Offline Installer..."
+          Write-Host "Fetching Opera GX Installer..."
           $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=forsaken&utm_medium=gx"
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
           Write-Host "Pre-installing Opera GX silently for all users..."
-          Start-Process -FilePath $installer -ArgumentList "/silent", "/allusers", "/launcherbrowser=0", "/desktopshortcut=1" -Wait
+          # Fix: Switched from /flags to Chromium --flags to prevent the installer from hanging in the background.
+          $args = @(
+              "--silent=1",
+              "--allusers=1",
+              "--launchbrowser=0",
+              "--desktopshortcut=1",
+              "--startmenushortcut=1"
+          )
           
+          Start-Process -FilePath $installer -ArgumentList $args -Wait
+          
+          # Force refresh the Public Desktop shortcut path
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
+          
+          # Move shortcut if it dropped in the wrong profile directory
           if (Test-Path "$userDesktop\Opera GX.lnk") {
               Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
           }
+          
           Write-Host "Opera GX successfully configured as a pre-installed desktop app!"
-
+          
       - name: Keep alive (Environment Active Link)
         run: |
           $mins = [int]"${{ env.RUNTIME_MINUTES }}"
