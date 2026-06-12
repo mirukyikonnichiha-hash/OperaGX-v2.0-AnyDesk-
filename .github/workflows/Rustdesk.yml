@@ -1,4 +1,4 @@
-name: Cloud PC + RustDesk + Opera GX (ID Fix)
+name: Cloud PC + RustDesk + Opera GX (Service ID Fix)
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
           
           Write-Host "Executing silent compilation sequence..."
           Start-Process $dst -ArgumentList "--install-service" -Wait
-          Start-Sleep -Seconds 8
+          Start-Sleep -Seconds 10
           Remove-Item $dst -ErrorAction SilentlyContinue
 
       - name: Configure Unattended Security Password & Connection Profile
@@ -100,15 +100,32 @@ jobs:
         run: |
           Write-Host "Querying RustDesk core system for local terminal ID..."
           $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
+          $systemCfgPath = "C:\Windows\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml"
           $deviceId = "Not Found"
           
-          # Force call the internal system engine to output the true unique ID bypass string
-          if (Test-Path $rdExe) {
-              cd "C:\Program Files\RustDesk"
-              $rawId = .\rustdesk.exe --get-id | Out-String
-              if ($rawId -match '(\d+)') {
-                  $deviceId = $Matches[1]
+          # Check all system channels for the generated ID
+          for ($i = 1; $i -le 10; $i++) {
+              if (Test-Path $rdExe) {
+                  # Method 1: Query the service directly via CLI mapping
+                  $rawId = Start-Process -FilePath $rdExe -ArgumentList "--get-id" -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\id.txt" -Wait
+                  if (Test-Path "$env:TEMP\id.txt") {
+                      $idText = Get-Content "$env:TEMP\id.txt" -Raw
+                      if ($idText -match '(\d+)') {
+                          $deviceId = $Matches[1].Trim()
+                          break
+                      }
+                  }
               }
+              
+              # Method 2: Fallback parse of the System Account configuration structure
+              if (Test-Path $systemCfgPath) {
+                  $content = Get-Content $systemCfgPath -Raw
+                  if ($content -match 'id\s*=\s*''(\d+)''') {
+                      $deviceId = $Matches[1]
+                      break
+                  }
+              }
+              Start-Sleep -Seconds 3
           }
           
           $ESC = [char]27
