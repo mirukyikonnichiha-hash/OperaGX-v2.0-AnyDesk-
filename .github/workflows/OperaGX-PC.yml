@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       ts_tailnet:         { description: "Tailscale tailnet (e.g. you@gmail.com)", required: true }
-      ts_api_key:         { description: "Tailscale API key (device admin, no Bearer)", required: true }
       ts_authkey:         { description: "Tailscale Auth key (reusable or ephemeral)", required: true }
-
+      ts_api_key:         { description: "Tailscale API key (device admin, no Bearer)", required: true }
 permissions:
   contents: read
 
