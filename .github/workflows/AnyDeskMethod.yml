@@ -1,4 +1,4 @@
-name: Cloud PC + AnyDesk + Opera GX (Ultimate Fix Restored)
+name: Cloud PC + AweSun + Opera GX (Ultimate Control Layout)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 190
     env:
-      ANYDESK_PASS: Pass@1234
+      AWESUN_PASS: Pass@1234
       RUNTIME_MINUTES: 180
 
     steps:
@@ -31,44 +31,47 @@ jobs:
               if (Test-Path "$userDesktop\$target") { Remove-Item "$userDesktop\$target" -Force -ErrorAction SilentlyContinue }
           }
 
-      - name: Download and Force Install AnyDesk
+      - name: Download and Force Install AweSun Global Client
         run: |
-          $url = "https://download.anydesk.com/AnyDesk.exe"
-          $dst = "$env:TEMP\AnyDesk.exe"
+          Write-Host "Fetching AweSun Global Distribution Installer..."
+          # Pulls the official global-node installation package
+          $url = "https://download.awesun.com/windows/AweSun_Client_Setup.exe"
+          $dst = "$env:TEMP\AweSunSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $dst
           
-          $installDir = "C:\Program Files (x86)\AnyDesk"
-          if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
-
-          Start-Process $dst -ArgumentList "--install `"$installDir`"", "--silent", "--start-with-win" -Wait
-          Start-Sleep -Seconds 5
+          Write-Host "Executing absolute background silent installation..."
+          # Installs quietly to system paths and registers the global connection network service
+          Start-Process $dst -ArgumentList "/S", "/allusers", "/startwithwin=1" -Wait
+          Start-Sleep -Seconds 8
           Remove-Item $dst -ErrorAction SilentlyContinue
 
-      - name: Configure Unattended Access Password & Force Enable Touch Injection
+      - name: Configure Unattended Security Password & Unblock Global Routing
         run: |
-          $ad = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
-          if (-not (Test-Path $ad)) { $ad = "C:\Program Files\AnyDesk\AnyDesk.exe" }
+          Write-Host "Applying network routing patches and unattended system passwords..."
+          $aweExe = "C:\Program Files (x86)\AweSun\AweSun.exe"
+          if (-not (Test-Path $aweExe)) { $aweExe = "C:\Program Files\AweSun\AweSun.exe" }
           
-          cmd.exe /c "echo ${{ env.ANYDESK_PASS }} | `"$ad`" --set-password"
+          # Forces the local runtime parameters to drop geographic/subnet matching restrictions
+          $regPath = "HKLM:\SOFTWARE\AweSun"
+          if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+          New-ItemProperty -Path $regPath -Name "EnableGlobalNodes" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
+          New-ItemProperty -Path $regPath -Name "DirectConnectMode" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
           
-          # Force Windows to allow UI Automation and Touch Injection over RDP layers
+          # Sets up your fixed unattended access security keys via the software control layer
+          if (Test-Path $aweExe) {
+              Start-Process -FilePath $aweExe -ArgumentList "--set-password=`"${{ env.AWESUN_PASS }}`"", "--silent" -Wait
+          }
+          
+          # Allow full mobile touch injection properties to register cleanly through the OS core
           New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableUIADesktopToggle" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
-          
-          # Unblock Touch Remote/Tablet Mode restrictions in Remote Desktop Services
-          $tsPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations"
-          New-ItemProperty -Path $tsPath -Name "TouchMode" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
-          New-ItemProperty -Path $tsPath -Name "EnableTouchInjection" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
           
           $path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
           Set-ItemProperty -Path $path -Name "TaskbarGlomLevel" -Value 0 -ErrorAction SilentlyContinue
-          
-          Start-Process -FilePath $ad -ArgumentList "--restart-service" -Wait
           Start-Sleep -Seconds 5
 
       - name: Minimize Running Infrastructure Windows
         run: |
           Write-Host "Sending active command prompt windows to the taskbar tray..."
-          # Restored your original working shell automation layout
           $shell = New-Object -ComObject Shell.Application
           $shell.MinimizeAll()
 
@@ -100,24 +103,34 @@ jobs:
           $WshShell = New-Object -ComObject WScript.Shell
           $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
           $Shortcut.TargetPath = $operaExe
-          # Routes directly to your link, suppresses the intro splash, and injects feature flags
           $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GXRewards,GXRewardsSidebarItem --with-feature:gx-rewards=1"
           $Shortcut.Save()
 
-      - name: Fetch and Display AnyDesk Connection Address
+      - name: Fetch and Display AweSun Connection Credentials
         run: |
-          $confPath = "C:\ProgramData\AnyDesk\system.conf"
-          $cleanId = ""
+          Write-Host "Extracting terminal ID codes from service database..."
+          $logPath = "C:\ProgramData\AweSun\logs\awesun_service.log"
+          $deviceId = "Fetching..."
           
-          for ($i = 1; $i -le 10; $i++) {
-              if (Test-Path $confPath) {
-                  $content = Get-Content $confPath -Raw
-                  if ($content -match 'ad\.anynet\.id=(\d+)') {
-                      $cleanId = $Matches[1]
+          # Gives the background client a moment to shake hands with the global server cluster
+          for ($i = 1; $i -le 12; $i++) {
+              if (Test-Path $logPath) {
+                  $logContent = Get-Content $logPath -Tail 100 -ErrorAction SilentlyContinue
+                  if ($logContent -match 'OnyxID:\s*(\d+)' -or $logContent -match 'DeviceID:\s*(\d+)') {
+                      $deviceId = $Matches[1]
                       break
                   }
               }
-              Start-Sleep -Seconds 4
+              # Fallback checks directly from local configuration file maps if logs rotate
+              $cfgPath = "C:\ProgramData\AweSun\config.ini"
+              if (Test-Path $cfgPath) {
+                  $cfg = Get-Content $cfgPath -Raw -ErrorAction SilentlyContinue
+                  if ($cfg -match 'cid\s*=\s*(\d+)') {
+                      $deviceId = $Matches[1]
+                      break
+                  }
+              }
+              Start-Sleep -Seconds 5
           }
           
           $ESC = [char]27
@@ -127,10 +140,10 @@ jobs:
           $Reset = "$ESC[0m"
           
           Write-Host "${Green}====================================================${Reset}"
-          Write-Host "${Green}       ANYDESK CLOUD MACHINE IS READY TO CONNECT     ${Reset}"
+          Write-Host "${Green}       AWESUN CLOUD MACHINE IS READY TO CONNECT      ${Reset}"
           Write-Host "${Green}====================================================${Reset}"
-          Write-Host "${Yellow} CONNECTION ID : ${Red}${cleanId}${Reset}"
-          Write-Host "${Yellow} PASSWORD      : ${Red}${{ env.ANYDESK_PASS }}${Reset}"
+          Write-Host "${Yellow} AWESUN DEVICE ID : ${Red}${deviceId}${Reset}"
+          Write-Host "${Yellow} ACCESS PASSWORD  : ${Red}${{ env.AWESUN_PASS }}${Reset}"
           Write-Host "${Green}====================================================${Reset}"
 
       - name: Keep alive
