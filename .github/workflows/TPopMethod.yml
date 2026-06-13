@@ -1,4 +1,4 @@
-name: Cloud PC + Web Browser Link + Opera GX (Guaranteed Sync)
+name: Cloud PC + Web Browser Link + Opera GX (Handshake Core Fix)
 
 on:
   workflow_dispatch:
@@ -47,36 +47,59 @@ jobs:
           Copy-Item -Path "C:\noVNC\noVNC-1.5.0\*" -Destination "C:\noVNC" -Recurse -Force
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "tunnel.exe"
 
-      - name: Start Services & Verify Handshake
+      - name: Spin Up Multi-Channel HTTP Native Server & Tunnel
         run: |
-          Write-Host "Starting Internal Bridge..."
-          Start-Process websockify -ArgumentList "8080 localhost:5900 --web C:\noVNC"
+          Write-Host "Starting Websockify TCP proxy pipeline..."
+          # Run websockify target cleanly on port 6080 for web-socket handling exclusively
+          Start-Process websockify -ArgumentList "6080 localhost:5900"
           
-          Write-Host "Verifying port 8080 handshake..."
-          $retries = 0
-          while (-not (Test-NetConnection -ComputerName 127.0.0.1 -Port 8080).TcpTestSucceeded -and $retries -lt 15) {
-              Write-Host "Waiting for service... ($retries/15)"
-              Start-Sleep -Seconds 2
-              $retries++
+          Write-Host "Deploying background Windows HTTP matrix handler..."
+          # This background script block handles HTTP GET web file requests natively on port 8080 
+          # ensuring Cloudflare gets clean, authorized code responses.
+          $HttpListenerScript = {
+              $listener = New-Object System.Net.HttpListener
+              $listener.Prefixes.Add("http://127.0.0.1:8080/")
+              $listener.Start()
+              while ($listener.IsListening) {
+                  $context = $listener.GetContext()
+                  $request = $context.Request
+                  $response = $context.Response
+                  
+                  $urlPath = $request.Url.LocalPath
+                  if ($urlPath -eq "/" -or $urlPath -eq "") { $urlPath = "/vnc.html" }
+                  $localFile = "C:\noVNC" + $urlPath.Replace("/", "\")
+                  
+                  if (Test-Path $localFile -PathType Leaf) {
+                      $bytes = [System.IO.File]::ReadAllBytes($localFile)
+                      $response.ContentLength64 = $bytes.Length
+                      $response.OutputStream.Write($bytes, 0, $bytes.Length)
+                  } else {
+                      $response.StatusCode = 404
+                  }
+                  $response.Close()
+              }
           }
+          Start-Process powershell -ArgumentList "-Command", $HttpListenerScript -WindowStyle Hidden
+          Start-Sleep -Seconds 5
           
-          Write-Host "Launching Cloudflare Tunnel..."
+          Write-Host "Launching Cloudflare Tunnel targeting native Web Listener..."
           $LogFile = "$env:TEMP\tunnel.log"
           Start-Process .\tunnel.exe -ArgumentList "tunnel", "--url", "http://127.0.0.1:8080" -RedirectStandardError $LogFile
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 12
           
           $WebLink = (Get-Content $LogFile -Raw) | Select-String -Pattern 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | Select-Object -ExpandProperty Matches | Select-Object -ExpandProperty Value -First 1
           if ($WebLink) {
-              $FinalUrl = $WebLink + "/vnc.html"
               Write-Host "===================================================="
-              Write-Host "      WEB-BROWSER CLOUD PC IS READY TO CONNECT      "
+              Write-Host "      WEB-BROWSER CLOUD PC IS READY TO CONNECT       "
               Write-Host "===================================================="
-              Write-Host " CLICK LINK: $FinalUrl"
-              Write-Host " PASSWORD  : ${{ env.VNC_PASS }}"
+              Write-Host " VIDEO ACCESS URL : $WebLink/vnc.html"
+              Write-Host " ACCESS PASSWORD  : ${{ env.VNC_PASS }}"
               Write-Host "===================================================="
+              Write-Host "NOTE FOR VIDEO: In the web settings menu layout when loaded,"
+              Write-Host "change WebSocket port mapping to 6080 to establish stream!"
           } else {
               Write-Error "CRITICAL: Cloudflare failed to register the tunnel."
           }
 
       - name: Keep alive
-        run: Start-Sleep -Seconds 10000 
+        run: Start-Sleep -Seconds 10000
