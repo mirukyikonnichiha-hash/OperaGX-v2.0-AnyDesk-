@@ -79,8 +79,13 @@ jobs:
           ngrok authtoken "${{ inputs.ngrok_token }}"
           
           Write-Host "Spawning background port forward tunnel over RDP port 3389..."
+          # Pass the service configuration cleanly
           Start-Process -FilePath "ngrok" -ArgumentList "tcp", "3389", "--log=stdout" -NoNewWindow
-
+          
+          # 🚨 CRITICAL FIX: Give ngrok 10 seconds to fully establish the connection and open port 4040
+          Write-Host "Waiting for tunnel layer to initialize..."
+          Start-Sleep -Seconds 10
+          
       - name: Download & Force Consumer Build of Opera GX
         run: |
           Write-Host "Fetching consumer-stable Opera GX Core..."
