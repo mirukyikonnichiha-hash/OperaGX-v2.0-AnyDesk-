@@ -1,4 +1,4 @@
-name: Cloud PC via Release-Hosted AweSun (With GoFile ID Link)
+name: Cloud PC via Release-Hosted AweSun (With BashUpload Link)
 
 on:
   workflow_dispatch:
@@ -50,7 +50,6 @@ jobs:
           }
           
           Write-Host "Launching connection dashboard..."
-          # Running it normally without "-s" to ensure the main interface opens up fully for the snapshot
           Start-Process $AweSunExe -NoNewWindow
           Write-Host "Waiting 25 seconds for window graphics and ID to render..."
           Start-Sleep -Seconds 25
@@ -72,34 +71,22 @@ jobs:
           $bitmap.Dispose()
           Write-Host "Screenshot saved locally to workspace."
 
-      - name: Push Screenshot to GoFile API and Output View Link
+      - name: Push Screenshot to BashUpload and Output View Link
         run: |
-          Write-Host "Requesting optimized active upload server from GoFile..."
+          Write-Host "Uploading screenshot payload to BashUpload..."
           try {
-              $ServerCheck = Invoke-RestMethod -Uri "https://api.gofile.io/getServer" -Method Get
-              $TargetServer = $ServerCheck.data.server
-              Write-Host "Assigned GoFile Landing Target: $TargetServer"
-              
-              Write-Host "Uploading screenshot payload..."
-              $UploadUri = "https://$TargetServer.gofile.io/uploadFile"
-              
-              # Execute multi-part form upload natively via PowerShell
-              $Form = @{
-                  file = Get-Item "$pwd\awesun_display.png"
-              }
-              $UploadResult = Invoke-RestMethod -Uri $UploadUri -Method Post -Form $Form
-              
-              $DownloadPage = $UploadResult.data.downloadPage
+              # Upload the file anonymously using a standard multipart form data post
+              $UploadResult = curl.exe -F "file=@awesun_display.png" https://bashupload.com
               
               Write-Host "`n===================================================="
               Write-Host "        AWESUN SCREENSHOT IS READY                  "
               Write-Host "===================================================="
-              Write-Host " CLICK THIS LINK TO SEE YOUR ID & PASSCODE:"
-              Write-Host " $DownloadPage"
+              Write-Host " CLICK THE LINK BELOW TO SEE YOUR ID & PASSCODE:"
+              Write-Host " $UploadResult"
               Write-Host "===================================================="
           }
           catch {
-              Write-Error "GoFile API upload failed. Fallback to standard artifact compilation."
+              Write-Host "Upload failed, but continuing execution..."
           }
 
       - name: Keep Alive Loop
