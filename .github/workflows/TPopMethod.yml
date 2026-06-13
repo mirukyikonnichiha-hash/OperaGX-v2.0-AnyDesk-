@@ -108,15 +108,19 @@ jobs:
           Write-Host "Waiting for tunnel generation..."
           Start-Sleep -Seconds 10
           
-          # Refined parser to target the explicit string format from the log file
+          # Refined parser to accurately extract the address from the multiline output structure
           $LogContent = Get-Content $logFile
-          $TunnelLine = $LogContent | Select-String "lhr.life tunneled with tls via"
+          $CleanAddress = ""
           
-          if ($TunnelLine) {
-              # Parse out just the hostname portion (e.g., xxxxxx.lhr.life)
-              $CleanAddress = ($TunnelLine -split " tunneled")[0].Trim()
-              
-              # Clear console colors using ANSI Escape Sequences for terminal highlighting
+          foreach ($Line in $LogContent) {
+              if ($Line -match "([a-zA-Z0-9\-]+\.lhr\.life)") {
+                  $CleanAddress = $Matches[1].Trim()
+                  break
+              }
+          }
+          
+          if ($CleanAddress -ne "") {
+              # ANSI Escape Sequences for vibrant terminal colors
               $Esc = [char]27
               $Cyan = "$Esc[36m"
               $Yellow = "$Esc[33m"
