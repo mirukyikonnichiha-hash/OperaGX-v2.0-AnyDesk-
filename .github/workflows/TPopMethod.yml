@@ -1,4 +1,4 @@
-name: Cloud PC + Web Browser Link + Opera GX (Tunnel Persistence Fix)
+name: Cloud PC + Web Browser Link + Opera GX (Final Verified Fix)
 
 on:
   workflow_dispatch:
@@ -47,37 +47,24 @@ jobs:
           Copy-Item -Path "C:\noVNC\noVNC-1.5.0\*" -Destination "C:\noVNC" -Recurse -Force
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "tunnel.exe"
 
-      - name: Launch Persistent HTTP Web Matrix
+      - name: Start Services & Verify Handshake
         run: |
-          Write-Host "Starting standard web server frame on port 8080..."
-          # Uses the native Python system pre-baked in windows-latest images to serve noVNC index files safely
-          Start-Process python -ArgumentList "-m http.server 8080 --directory C:\noVNC"
+          Write-Host "Starting Web-Enabled Internal Bridge on port 8080..."
+          # The --web parameter instructs websockify to return standard HTTP web code
+          # whenever Cloudflare pings the base endpoint, preventing 530 unregistrations.
+          Start-Process websockify -ArgumentList "8080 localhost:5900 --web C:\noVNC"
           
-          Write-Host "Starting Websockify on backend port 6080..."
-          Start-Process websockify -ArgumentList "6080 localhost:5900"
-          
-          Write-Host "Verifying port handshakes are live..."
+          Write-Host "Verifying port 8080 interface handshake..."
           $retries = 0
           while (-not (Test-NetConnection -ComputerName 127.0.0.1 -Port 8080).TcpTestSucceeded -and $retries -lt 15) {
+              Write-Host "Waiting for service infrastructure... ($retries/15)"
               Start-Sleep -Seconds 2
               $retries++
           }
-
-      - name: Configure and Establish Persistent Cloudflare Edge Tunnel
-        run: |
-          Write-Host "Writing local config profile rules..."
-          # Creating an explicit ingress configuration map blocks the edge server from unregistering the URL route
-          $ConfigContent = @"
-          ingress:
-            - hostname: "*"
-              service: http://127.0.0.1:8080
-            - service: http_status:404
-          "@
-          Out-File -FilePath "config.yml" -InputObject $ConfigContent -Encoding ascii
           
-          Write-Host "Starting secure tunnel process via config profile rules..."
+          Write-Host "Launching Standard Cloudflare Quick Tunnel..."
           $LogFile = "$env:TEMP\tunnel.log"
-          Start-Process .\tunnel.exe -ArgumentList "tunnel", "--config", "config.yml" -RedirectStandardError $LogFile
+          Start-Process .\tunnel.exe -ArgumentList "tunnel", "--url", "http://127.0.0.1:8080" -RedirectStandardError $LogFile
           Start-Sleep -Seconds 12
           
           $WebLink = (Get-Content $LogFile -Raw) | Select-String -Pattern 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | Select-Object -ExpandProperty Matches | Select-Object -ExpandProperty Value -First 1
@@ -90,7 +77,7 @@ jobs:
               Write-Host " PASSWORD  : ${{ env.VNC_PASS }}"
               Write-Host "===================================================="
           } else {
-              Write-Error "CRITICAL: Cloudflare failed to register the tunnel configuration rules."
+              Write-Error "CRITICAL: Cloudflare failed to register the tunnel profile route."
           }
 
       - name: Keep alive
