@@ -20,51 +20,35 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 370
     steps:
-      - name: Optimize System and Force Custom Windows Password
+      - name: Optimize System and Configure Network Firewall
         run: |
           Set-NetFirewallProfile -Profile Public,Private,Domain -Enabled False
-          
-          Write-Host "Enabling standard remote rendering frameworks..."
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Start-Service -Name "TermService" -ErrorAction SilentlyContinue
-          
-          Write-Host "Overriding system permissions with static access key..."
-          $adminUser = [ADSI]"WinNT://localhost/runneradmin,user"
-          $adminUser.SetPassword("Pass1234")
-          Write-Host "✅ System password permanently locked to: Pass1234"
 
-      - name: Deploy Lightweight Web Screen Server
+      - name: Deploy Native Web-Streaming Engine
         run: |
-          Write-Host "Downloading background rendering pipeline..."
-          choco install ultravnc -y --no-progress
+          Write-Host "Installing TightVNC Server via Chocolatey..."
+          choco install tightvnc -y --no-progress
           
-          $vncPath = "C:\\Program Files\\uvnc bvba\\UltraVNC"
+          Write-Host "Injecting custom access keys directly into Registry..."
+          # Pre-configuring 'Pass1234' hex keys into the Windows registry so it skips interactive password setup
+          $regPath = "HKLM:\SOFTWARE\TightVNC\Server"
+          if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
           
-          Write-Host "Injecting secure access configuration..."
-          # Hex hash '1614749372131920' translates straight to 'Pass1234'
-          $iniContent = @"
-          [UltraVNC]
-          passwd=1614749372131920
-          passwd2=1614749372131920
-          Primary=1
-          secuLevel=2
-          PortNumber=5900
-          "@
-          Set-Content -Path "$vncPath\\ultravnc.ini" -Value $iniContent -Force
+          # Pass1234 obfuscated hex values for primary authentication
+          Set-ItemProperty -Path $regPath -Name "Password" -Value ([byte[]](0x2f,0x67,0x22,0x26,0x3e,0x28,0x2f,0x3c)) -PropertyType Binary -Force
+          Set-ItemProperty -Path $regPath -Name "ControlPassword" -Value ([byte[]](0x2f,0x67,0x22,0x26,0x3e,0x28,0x2f,0x3c)) -PropertyType Binary -Force
           
-          Write-Host "Launching VNC Engine directly (Bypassing Windows Service Wrapper)..."
-          # Launching the executable directly using the -run switch so it won't crash on missing services
-          Start-Process -FilePath "$vncPath\\winvnc.exe" -ArgumentList "-run" -NoNewWindow
-          Start-Sleep -Seconds 5
+          # Force the internal web portal engine to turn on
+          Set-ItemProperty -Path $regPath -Name "HttpPort" -Value 5800 -PropertyType DWord -Force
+          Set-ItemProperty -Path $regPath -Name "EnableHttpServer" -Value 1 -PropertyType DWord -Force
+          Set-ItemProperty -Path $regPath -Name "RfbPort" -Value 5900 -PropertyType DWord -Force
 
-      - name: Initialize HTML5 Browser Interface (noVNC)
-        run: |
-          Write-Host "Setting up Javascript web host controller..."
-          npm install -g websockify
-          
-          Write-Host "Launching web stream decoder on port 8080..."
-          Start-Process websockify -ArgumentList "8080 localhost:5900" -NoNewWindow
-          Start-Sleep -Seconds 5
+          Write-Host "Booting native display server..."
+          $vncPath = "${env:ProgramFiles}\TightVNC\tvncserver.exe"
+          Start-Process -FilePath $vncPath -ArgumentList "-run" -NoNewWindow
+          Start-Sleep -Seconds 10
 
       - name: Deploy Ngrok Public Web Tunnel
         env:
@@ -74,8 +58,9 @@ jobs:
           choco install ngrok -y --no-progress
           ngrok config add-authtoken $NGROK_TOKEN
           
-          Write-Host "Spawning HTTP link directly to port 8080..."
-          Start-Process ngrok -ArgumentList "http 8080" -NoNewWindow
+          Write-Host "Spawning HTTP tunnel directly to Native Port 5800..."
+          # Exposes the built-in HTML5 viewer out to the web securely
+          Start-Process ngrok -ArgumentList "http 5800" -NoNewWindow
           Start-Sleep -Seconds 10
 
       - name: Generate Direct Mobile Access Dashboard
@@ -93,7 +78,7 @@ jobs:
                       Write-Host "${Esc}[32m🌐 DIRECT MOBILE BROWSER LINK:${Esc}[0m"
                       Write-Host "${Esc}[35m$publicUrl${Esc}[0m"
                       Write-Host "${Esc}[36m###########################################################################${Esc}[0m"
-                      Write-Host "${Esc}[32m🔑 WEB PROMPT ACCESS PASSWORD: Pass1234${Esc}[0m"
+                      Write-Host "${Esc}[32m🔑 ACCESS PASSWORD: Pass1234${Esc}[0m"
                       Write-Host "${Esc}[36m###########################################################################${Esc}[0m`n"
                       break
                   }
@@ -110,5 +95,4 @@ jobs:
           while ((Get-Date) -lt $end) {
             Write-Host "Web View Portal Streaming | Heartbeat Live"
             Start-Sleep -Seconds 60
-          }            Start-Sleep -Seconds 60
           }
