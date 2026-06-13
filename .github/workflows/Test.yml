@@ -68,32 +68,6 @@ jobs:
           Set-Service -Name "TermService" -StartupType Automatic
           Start-Service -Name "TermService" -ErrorAction SilentlyContinue
 
-      - name: Install Ngrok & Establish Tunnel Network
-        run: |
-          Write-Host "Installing network tunnel routing engine..."
-          choco install ngrok --yes
-          Start-Sleep -Seconds 3
-          
-          Write-Host "Authenticating tunnel framework..."
-          ngrok config add-authtoken "${{ inputs.ngrok_token }}"
-          
-          Write-Host "Writing tunnel configuration matrix..."
-          # This explicitly defines the RDP tunnel profile inside the ngrok configuration file
-          $configPath = "$env:USERPROFILE\AppData\Local\ngrok\ngrok.yml"
-          @'
-          tunnels:
-            rdp:
-              proto: tcp
-              addr: 3389
-          '@ | Out-File -FilePath $configPath -Append -Encoding utf8
-          
-          Write-Host "Spawning persistent background tunnel..."
-          # Starting it using --all tells ngrok to start the RDP tunnel defined above in the background
-          Start-Process -FilePath "ngrok" -ArgumentList "start", "--all", "--config=$configPath" -NoNewWindow
-          
-          Write-Host "Waiting for tunnel layer to stabilize..."
-          Start-Sleep -Seconds 10
-
       - name: Download & Force Consumer Build of Opera GX
         run: |
           Write-Host "Fetching consumer-stable Opera GX Core..."
@@ -124,13 +98,25 @@ jobs:
           Write-Host "Executing promotional browser instance..."
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           Start-Process "$publicDesktop\Opera GX Browser.lnk"
-          Start-Sleep -Seconds 6
+          Start-Sleep -Seconds 4
 
-      - name: Fetch and Display Live Connection Endpoint
+      - name: Install Ngrok, Establish Tunnel & Fetch Connection Endpoint
         run: |
-          Start-Sleep -Seconds 2
-          Write-Host "Querying secure endpoint matrix..."
+          Write-Host "Installing network tunnel routing engine..."
+          choco install ngrok --yes
+          Start-Sleep -Seconds 3
           
+          Write-Host "Authenticating tunnel framework..."
+          ngrok config add-authtoken "${{ inputs.ngrok_token }}"
+          
+          Write-Host "Spawning background port forward tunnel over RDP port 3389..."
+          # Handled sequentially in a single step context block to bypass exit cleanup
+          Start-Process -FilePath "ngrok" -ArgumentList "tcp", "3389", "--log=stdout" -NoNewWindow
+          
+          Write-Host "Waiting for tunnel layer to stabilize..."
+          Start-Sleep -Seconds 12
+          
+          Write-Host "Querying secure endpoint matrix..."
           $Response = Invoke-WebRequest -Uri "http://127.0.0.1:4040/api/tunnels" -UseBasicParsing
           $JObject = ConvertFrom-Json $Response.Content
           $PublicUrl = $JObject.tunnels[0].public_url
