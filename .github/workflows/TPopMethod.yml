@@ -68,19 +68,15 @@ jobs:
           netsh advfirewall firewall delete rule name="APP-PORT-UDP-21116" 2>$null
           netsh advfirewall firewall add rule name="APP-PORT-UDP-21116" dir=in action=allow protocol=UDP localport=21116 | Out-Null
 
-      - name: Download & Force Consumer Build of Opera GX (No-Launch Isolation)
+      - name: Download & Force Consumer Build of Opera GX
         run: |
           Write-Host "Fetching consumer-stable Opera GX Core..."
           $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx"
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          # Added explicit --nolaunch instruction alongside the silent arguments
-          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--nolaunch" -Wait
+          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0" -Wait
           Start-Sleep -Seconds 4
-          
-          # Hard purge any background installer-spawned engine handles immediately
-          Get-Process -Name "opera" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
@@ -98,17 +94,42 @@ jobs:
           $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GXRewards,GXRewardsSidebarItem --with-feature:gx-rewards=1"
           $Shortcut.Save()
 
-      - name: Launch RustDesk (Leave Open) and Custom Browser (Behind It)
+      - name: Launch Components and Force RustDesk Always On Top
         run: |
-          # Fire up RustDesk so it stays front and center on the screen
+          # 1. Fire up RustDesk
           $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
           Start-Process -FilePath $rdExe -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 4
 
-          # Launch Opera GX cleanly using your custom configured link shortcut
+          # 2. Launch Opera GX cleanly right after
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           Start-Process "$publicDesktop\Opera GX Browser.lnk"
           Start-Sleep -Seconds 6
+
+          # 3. Use Win32 API to find the RustDesk window and pins it to the very top layer
+          Write-Host "Pinning RustDesk layout to the topmost visual z-index layer..."
+          $signature = @'
+          [DllImport("user32.dll", SetLastError = true)]
+          public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+          
+          [DllImport("user32.dll", SetLastError = true)]
+          [return: MarshalAs(UnmanagedType.Bool)]
+          public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+          '@
+          
+          $win32 = Add-Type -MemberDefinition $signature -Name "TopMostUtil" -Namespace "Win32" -PassThru
+          
+          # Locates the RustDesk primary UI window handle
+          $hwnd = $win32::FindWindow("CabinetWClass", "RustDesk")
+          if ($hwnd -eq [IntPtr]::Zero) { $hwnd = $win32::FindWindow( $null, "RustDesk") }
+          
+          if ($hwnd -ne [IntPtr]::Zero) {
+              # -1 represents HWND_TOPMOST; 0x0001 | 0x0002 keeps its current position and size unchanged
+              $win32::SetWindowPos($hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002) | Out-Null
+              Write-Host "RustDesk successfully locked on top of the browser window display layout."
+          } else {
+              Write-Warning "Could not find an active RustDesk window handle to lock."
+          }
 
       - name: Hide Host Agent Window ONLY (Targeted Minimization)
         run: |
