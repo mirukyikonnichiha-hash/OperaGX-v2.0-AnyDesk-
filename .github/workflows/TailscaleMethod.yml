@@ -35,6 +35,13 @@ jobs:
           $targets = @("Unity Hub.lnk", "R 4.6.0.lnk", "Firefox.lnk", "Google Chrome.lnk", "Claim Rewards Here.lnk")
           foreach ($target in $targets) { Remove-Item "$publicDesktop\$target" -Force -ErrorAction SilentlyContinue }
 
+      - name: Dismiss Annoying Windows System Properties Popups
+        run: |
+          Write-Host "Killing background error popups..."
+          # This specifically targets the window processing the system property warnings
+          Stop-Process -Name "systempropertiesadvanced" -Force -ErrorAction SilentlyContinue
+          Stop-Process -Name "systempropertiescomputername" -Force -ErrorAction SilentlyContinue
+
       - name: Fetch and Save Official Forsaken Installer to Desktop
         run: |
           Write-Host "Scraping the live Forsaken collaboration page for session token..."
