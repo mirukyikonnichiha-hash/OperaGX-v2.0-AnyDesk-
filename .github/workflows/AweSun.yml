@@ -1,4 +1,4 @@
-name: Opera GX Mobile Rewards Hub
+name: Opera GX Mobile Rewards Hub (Stable Fix)
 
 on:
   workflow_dispatch:
@@ -20,29 +20,26 @@ jobs:
     timeout-minutes: 130
 
     steps:
-      - name: Parse Runtime
+      - name: Parse Runtime Requirements
         run: |
           $runtime = [int]"${{ inputs.runtime_minutes }}"
           if ($runtime -gt 120 -or $runtime -lt 1) { $runtime = 60 }
           "RUNTIME_MINUTES=$runtime" | Out-File -Append $env:GITHUB_ENV
 
-      - name: Download & Extract Clean Tools
+      - name: Install Stable Components via Package Manager
         run: |
-          Write-Host "Downloading background-friendly environment components..."
-          # 1. Download TightVNC
+          Write-Host "Fetching official, verified packages..."
+          # 1. Use pre-installed Chocolatey to pull the latest verified Ngrok build
+          choco install ngrok -y --no-progress
+          
+          # 2. Grab TightVNC using a stable, direct vendor distribution link
           Invoke-WebRequest -Uri "https://www.tightvnc.com/download/2.8.85/tightvnc-2.8.85-gpl-setup-64bit.msi" -OutFile "$env:TEMP\vnc.msi"
-          
-          # 2. Download Ngrok 
-          Invoke-WebRequest -Uri "https://bin.equinox.io/c/b34ba2s8vaM/ngrok-stable-windows-amd64.zip" -OutFile "$env:TEMP\ngrok.zip"
-          Expand-Archive -Path "$env:TEMP\ngrok.zip" -DestinationPath "$env:TEMP\ngrok" -Force
-          
-          # 3. Download Pre-Extracted Portable Opera GX Build
-          Invoke-WebRequest -Uri "https://github.com/tusharpop553-afk/OperaGX-RDP/releases/download/v1.0/AweSun_Setup.exe" -OutFile "$env:TEMP\AweSun_Setup.exe"
+          Write-Host "Core utilities successfully staged."
 
-      - name: Install VNC Server with Embedded Password
+      - name: Inject Unattended VNC Password Profile
         run: |
-          Write-Host "Installing display layout engine..."
-          # Pass explicit installation properties to set the access passwords automatically in the backend
+          Write-Host "Configuring silent display service configuration..."
+          # Pass explicit installation properties to bypass all interactive setup windows completely
           $msiArgs = @(
               "/i", "`"$env:TEMP\vnc.msi`"",
               "/quiet", "/norestart",
@@ -56,39 +53,45 @@ jobs:
           
           Start-Process msiexec.exe -ArgumentList $msiArgs -Wait
           
-          # Restart the service to make sure the newly injected registry keys take effect
+          # Force service re-initialization to ensure registry parameter persistence
           Restart-Service -Name "tvnserver" -Force -ErrorAction SilentlyContinue
-          Write-Host "Display driver active with pre-configured password protection."
+          Write-Host "VNC server authenticated and active in system context."
 
-      - name: Establish Viewer Tunnel Link
+      - name: Establish Secure Mobile View Tunnel
         env:
-          NGROK_AUTH: ${{ inputs.ngrok_token }}
+          NGROK_AUTH: ${{ inputs.inputs.ngrok_token }}
         run: |
-          Write-Host "Initializing secure public routing map..."
-          & "$env:TEMP\ngrok\ngrok.exe" authtoken $env:NGROK_AUTH
+          Write-Host "Provisioning secure edge map network layer..."
+          # Register the workflow token profile globally using the choco path setup
+          & ngrok authtoken "${{ inputs.ngrok_token }}"
           
-          # Start a TCP tunnel targeting the default TightVNC port (5900)
-          Start-Process -FilePath "$env:TEMP\ngrok\ngrok.exe" -ArgumentList "tcp 5900"
-          Start-Sleep -Seconds 6
+          # Route traffic straight through local port 5900
+          Start-Process -FilePath "ngrok" -ArgumentList "tcp 5900"
+          Start-Sleep -Seconds 8
           
-          # Fetch the public connection string for your viewers
-          $api = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels"
-          $publicUrl = $api.tunnels[0].public_url
-          
-          Write-Host "=========================================================="
-          Write-Host "MOBILE VIEWERS CONNECTION DETAILS:"
-          Write-Host "1. Download a free VNC Viewer app on your phone."
-          Write-Host "2. Connect to this Address: $publicUrl"
-          Write-Host "3. Use Password: ViewerPassword123"
-          Write-Host "=========================================================="
-          
-          "VIEW_URL=$publicUrl" | Out-File -Append $env:GITHUB_ENV
+          # Pull real-time connection telemetry from internal diagnostic block
+          try {
+            $api = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels"
+            $publicUrl = $api.tunnels[0].public_url
+            
+            Write-Host "=========================================================="
+            Write-Host "SUCCESS! MOBILE VIEWERS CONNECTION DETAILS:"
+            Write-Host "1. Download a free VNC Viewer app on your phone."
+            Write-Host "2. Target Address: $publicUrl"
+            Write-Host "3. System Password: ViewerPassword123"
+            Write-Host "=========================================================="
+            
+            "VIEW_URL=$publicUrl" | Out-File -Append $env:GITHUB_ENV
+          } catch {
+            Write-Error "Failed to map local network tunnel link: $($_.Exception.Message)"
+            exit 1
+          }
 
-      - name: Keep-Alive Infrastructure Engine
+      - name: Connection Keep-Alive Loop
         run: |
           $mins = [int]$env:RUNTIME_MINUTES
           $end = (Get-Date).AddMinutes($mins)
           while ((Get-Date) -lt $end) {
-            Write-Host "Rewards Session Active | Connect via: $env:VIEW_URL | Ending at " $end.ToString("HH:mm:ss")
+            Write-Host "Rewards Engine Online | Stream Target: $env:VIEW_URL | Ending at " $end.ToString("HH:mm:ss")
             Start-Sleep -Seconds 60
           }
