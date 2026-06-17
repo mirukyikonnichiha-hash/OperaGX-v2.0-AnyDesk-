@@ -91,4 +91,134 @@ jobs:
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
           # Launch once to build baseline directory structures
-          Start
+          Start-Process -FilePath $operaExe -ArgumentList "--no-first-run"
+          Start-Sleep -Seconds 15
+
+          # Force stop to release file locks for layout injection
+          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+          # Target profile configurations
+          $profileDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
+          $prefPath = "$profileDir\Preferences"
+          $backupPath = "$profileDir\Preferences.backup"
+
+          if (Test-Path $prefPath) {
+              Write-Host "Injecting custom configuration matrices..."
+              $configObj = Get-Content $prefPath -Raw | ConvertFrom-Json
+
+              # === LAYER 1: GxRewards Sidebar Panel ===
+              if (-not $configObj.ui) { $configObj | Add-Member -MemberType NoteProperty -Name "ui" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "browser" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar) { $configObj.ui.browser | Add-Member -MemberType NoteProperty -Name "sidebar" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar.item_prefs) { $configObj.ui.browser.sidebar | Add-Member -MemberType NoteProperty -Name "item_prefs" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar.item_prefs.visibility) { $configObj.ui.browser.sidebar.item_prefs | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
+              
+              if ($configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards -eq $null) {
+                  $configObj.ui.browser.sidebar.item_prefs.visibility | Add-Member -MemberType NoteProperty -Name "GxRewards" -Value $true -Force
+              } else {
+                  $configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards = $true
+              }
+
+              # === LAYER 2: Root Visibility Node ===
+              if (-not $configObj.ui.visibility) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
+              
+              if ($configObj.ui.visibility.GxRewards -eq $null) {
+                  $configObj.ui.visibility | Add-Member -MemberType NoteProperty -Name "GxRewards" -Value $true -Force
+              } else {
+                  $configObj.ui.visibility.GxRewards = $true
+              }
+
+              # === LAYER 3: Native High-Speed VPN Node ===
+              if (-not $configObj.vpn) { $configObj | Add-Member -MemberType NoteProperty -Name "vpn" -Value (New-Object PSObject) }
+              
+              if ($configObj.vpn.blacklisted_interfaces -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "blacklisted_interfaces" -Value @() -Force }
+              if ($configObj.vpn.enabled -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "enabled" -Value $true -Force } else { $configObj.vpn.enabled = $true }
+              if ($configObj.vpn.on_startup -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "on_startup" -Value $true -Force } else { $configObj.vpn.on_startup = $true }
+
+              $finalJson = $configObj | ConvertTo-Json -Depth 100 -Compress
+
+              Remove-Item $prefPath -Force -ErrorAction SilentlyContinue
+              Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
+
+              Set-Content -Path $prefPath -Value $finalJson -Force
+              Set-Content -Path $backupPath -Value $finalJson -Force
+          }
+          
+          # === INITIAL HARD LOCKDOWN ===
+          Write-Host "Forcing Read-Only lock on preference templates..."
+          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true }
+          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true }
+
+          # RUN #1 (FORCED INITIALIZATION): Opened locked down for 25 seconds to register layout cleanly
+          Write-Host "Launching forced layout run (Read-Only) for 25 seconds..."
+          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
+          Start-Sleep -Seconds 25
+
+          # === FLIP THE SWITCH: REMOVE READ-ONLY WHILE RUNNING ===
+          Write-Host "Flipping profile locks to WRITABLE state..."
+          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $false }
+          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $false }
+          
+          # Hold open for 10 seconds as requested to allow full write registration
+          Write-Host "Holding browser open for 10 seconds to process profile write verification..."
+          Start-Sleep -Seconds 10
+
+          # Gracefully close the browser so it commits the loaded layout back into the unlocked files
+          Write-Host "Halting browser engine to trigger a state save sequence..."
+          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+          # Create user-accessible shortcut
+          $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
+          $userDesktop = "$env:USERPROFILE\Desktop"
+          if (Test-Path "$userDesktop\Opera GX.lnk") {
+              Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
+          }
+          $WshShell = New-Object -ComObject WScript.Shell
+          $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
+          $Shortcut.TargetPath = $operaExe
+          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run"
+          $Shortcut.Save()
+
+          # RUN #2 (PERSISTENT INTERACTIVE INSTANCE): Opens completely normal and writable for the user
+          Write-Host "Launching final interactive workspace instance (fully writable)..."
+          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
+
+      - name: Fetch and Display AnyDesk Connection Address
+        run: |
+          $confPath = "C:\ProgramData\AnyDesk\system.conf"
+          $cleanId = ""
+          
+          for ($i = 1; $i -le 10; $i++) {
+              if (Test-Path $confPath) {
+                  $content = Get-Content $confPath -Raw
+                  if ($content -match 'ad\.anynet\.id=(\d+)') {
+                      $cleanId = $Matches[1]
+                      break
+                  }
+              }
+              Start-Sleep -Seconds 4
+          }
+          
+          $ESC = [char]27
+          $Green = "$ESC[32m"
+          $Yellow = "$ESC[33m"
+          $Red = "$ESC[31m"
+          $Reset = "$ESC[0m"
+          
+          Write-Host "${Green}====================================================${Reset}"
+          Write-Host "${Green}        ANYDESK CLOUD MACHINE IS READY TO CONNECT     ${Reset}"
+          Write-Host "${Green}====================================================${Reset}"
+          Write-Host "${Yellow} CONNECTION ID : ${Red}${cleanId}${Reset}"
+          Write-Host "${Yellow} PASSWORD      : ${Red}${{ env.ANYDESK_PASS }}${Reset}"
+          Write-Host "${Green}====================================================${Reset}"
+
+      - name: Keep alive
+        run: |
+          $mins = [int]"${{ env.RUNTIME_MINUTES }}"
+          $end = (Get-Date).AddMinutes($mins)
+          while ((Get-Date) -lt $end) {
+            Write-Host ("Cloud PC Heartbeat " + (Get-Date).ToString("HH:mm:ss") + " | Active until " + $end.ToString("HH:mm:ss"))
+            Start-Sleep -Seconds 60
+          }
