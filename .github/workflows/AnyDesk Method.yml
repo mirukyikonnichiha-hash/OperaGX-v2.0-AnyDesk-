@@ -76,10 +76,30 @@ jobs:
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          # Your original installation setup that keeps the browser completely closed
-          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
-          Start-Sleep -Seconds 5
+          # 1. Install using stable consumer arguments
+          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--desktopshortcut=1" -Wait
+          Write-Host "Waiting for initial profile deployment..."
+          Start-Sleep -Seconds 12
           
+          # 2. Stop the browser instance briefly so we can safely edit the preferences layout
+          Write-Host "Stopping Opera GX to apply custom configuration adjustments..."
+          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 4
+          
+          # 3. Inject GxRewards directly into the true Opera GX Stable folder path
+          $prefPath = "$env:APPDATA\Opera Software\Opera GX Stable\Preferences"
+          if (Test-Path $prefPath) {
+              $json = Get-Content $prefPath -Raw
+              
+              # Force inject the sidebar config matrix and pin the rewards panel
+              if ($json -notmatch '"gx_rewards"' -and $json -notmatch '"GxRewards"') {
+                  $json = $json -replace '"ui":\{', '"ui":{"sidebar":{"visible":true,"pinned_items":["gx_rewards"]},'
+              }
+              
+              Set-Content -Path $prefPath -Value $json -Force
+              Write-Host "Preferences file successfully modified in Opera GX Stable."
+          }
+
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
           
@@ -90,17 +110,16 @@ jobs:
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
-          Write-Host "Configuring explicit launcher shortcut with forced promo link and sidebar flags..."
+          Write-Host "Configuring explicit launcher shortcut with forced promo link..."
           $WshShell = New-Object -ComObject WScript.Shell
           $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
           $Shortcut.TargetPath = $operaExe
-          # Injects features right into the desktop shortcut arguments
-          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GXRewards,GXRewardsSidebarItem,WebRtcRemoteEventLog --enable-vpn"
+          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GxRewards,GXRewardsSidebarItem"
           $Shortcut.Save()
           
-          # Launches Opera explicitly with runtime parameters to force activate VPN and Rewards
-          Write-Host "Launching Opera GX with custom feature configurations activated..."
-          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken","--no-first-run","--enable-features=GXRewards,GXRewardsSidebarItem,WebRtcRemoteEventLog","--enable-vpn"
+          # 4. Final launch with the sidebar configuration active
+          Write-Host "Relaunching optimized environment..."
+          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken","--no-first-run","--enable-features=GxRewards"
 
       - name: Fetch and Display AnyDesk Connection Address
         run: |
