@@ -90,38 +90,39 @@ jobs:
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
-          # 2. Launch normally to let it generate a pristine, authentic profile baseline
-          Write-Host "Launching clean engine layer..."
+          # 2. Launch normally to let it generate pristine profile base and backup structures
+          Write-Host "Launching clean engine layer to initialize workspace profiles..."
           Start-Process -FilePath $operaExe -ArgumentList "--no-first-run"
           Start-Sleep -Seconds 15
 
-          # 3. Force stop browser to clear the file handles
+          # 3. Force stop browser to release file handles entirely
           Write-Host "Halting engine layer..."
           Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 5
 
-          # 4. Read the natively generated file and inject our variables directly into the tree structure
-          $prefPath = "$env:APPDATA\Opera Software\Opera GX Stable\Default\Preferences"
+          # 4. Target profile configurations
+          $profileDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
+          $prefPath = "$profileDir\Preferences"
+          $backupPath = "$profileDir\Preferences.backup"
 
           if (Test-Path $prefPath) {
-              Write-Host "Natively generated Preferences file found. Parsing JSON object..."
+              Write-Host "Natively generated Preferences found. Injecting GxRewards layouts..."
               $configObj = Get-Content $prefPath -Raw | ConvertFrom-Json
 
-              # Inject layer 1: ui.browser.sidebar.item_prefs.visibility.GxRewards
+              # Build and verify internal nesting layers for sidebar visibility
               if (-not $configObj.ui) { $configObj | Add-Member -MemberType NoteProperty -Name "ui" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "browser" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser.sidebar) { $configObj.ui.browser | Add-Member -MemberType NoteProperty -Name "sidebar" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser.sidebar.item_prefs) { $configObj.ui.browser.sidebar | Add-Member -MemberType NoteProperty -Name "item_prefs" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser.sidebar.item_prefs.visibility) { $configObj.ui.browser.sidebar.item_prefs | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
               
-              # Force or overwrite the inner value to true
               if ($configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards -eq $null) {
                   $configObj.ui.browser.sidebar.item_prefs.visibility | Add-Member -MemberType NoteProperty -Name "GxRewards" -Value $true -Force
               } else {
                   $configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards = $true
               }
 
-              # Inject layer 2: ui.visibility.GxRewards
+              # Build and verify root visibility layer
               if (-not $configObj.ui.visibility) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
               
               if ($configObj.ui.visibility.GxRewards -eq $null) {
@@ -130,11 +131,23 @@ jobs:
                   $configObj.ui.visibility.GxRewards = $true
               }
 
-              # Save everything back completely compressed without losing factory tokens
-              $configObj | ConvertTo-Json -Depth 100 -Compress | Set-Content $prefPath -Force
-              Write-Host "Successfully injected GxRewards configuration parameters directly into target nodes!"
+              $finalJson = $configObj | ConvertTo-Json -Depth 100 -Compress
+
+              # Clear out the un-mutated files cleanly
+              Remove-Item $prefPath -Force -ErrorAction SilentlyContinue
+              Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
+
+              # Flush the exact identical true configuration strings directly into place
+              Set-Content -Path $prefPath -Value $finalJson -Force
+              Set-Content -Path $backupPath -Value $finalJson -Force
+
+              # 5. FORCE READ-ONLY FILE ATTRIBUTES AT SYSTEM LAYER
+              Write-Host "Locking profiles to Read-Only to bypass engine self-healing validation..."
+              Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true
+              Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true
+              Write-Host "Files successfully written and protected."
           } else {
-              Write-Warning "Preferences path could not be allocated by the engine in time."
+              Write-Warning "Target preferences file initialization timeout encountered."
           }
           
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
