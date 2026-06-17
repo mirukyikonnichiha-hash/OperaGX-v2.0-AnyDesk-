@@ -83,31 +83,59 @@ jobs:
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          # Runs setup silently and leaves browser closed
+          # 1. Install browser silently
           Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
           Start-Sleep -Seconds 5
 
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
-          # Ensure target profile path structure exists
-          $targetDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
-          if (-not (Test-Path $targetDir)) { 
-              New-Item -ItemType Directory -Path $targetDir -Force | Out-Null 
-          }
-          $prefPath = "$targetDir\Preferences"
+          # 2. Launch normally to let it generate a pristine, authentic profile baseline
+          Write-Host "Launching clean engine layer..."
+          Start-Process -FilePath $operaExe -ArgumentList "--no-first-run"
+          Start-Sleep -Seconds 15
 
-          # Create a correctly structured base JSON with visibility wrapping GxRewards
-          Write-Host "Seeding exact GxRewards properties into the profile preferences..."
-          $baseConfig = @{
-              visibility = @{
-                  GxRewards = $true
+          # 3. Force stop browser to clear the file handles
+          Write-Host "Halting engine layer..."
+          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+          # 4. Read the natively generated file and inject our variables directly into the tree structure
+          $prefPath = "$env:APPDATA\Opera Software\Opera GX Stable\Default\Preferences"
+
+          if (Test-Path $prefPath) {
+              Write-Host "Natively generated Preferences file found. Parsing JSON object..."
+              $configObj = Get-Content $prefPath -Raw | ConvertFrom-Json
+
+              # Inject layer 1: ui.browser.sidebar.item_prefs.visibility.GxRewards
+              if (-not $configObj.ui) { $configObj | Add-Member -MemberType NoteProperty -Name "ui" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "browser" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar) { $configObj.ui.browser | Add-Member -MemberType NoteProperty -Name "sidebar" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar.item_prefs) { $configObj.ui.browser.sidebar | Add-Member -MemberType NoteProperty -Name "item_prefs" -Value (New-Object PSObject) }
+              if (-not $configObj.ui.browser.sidebar.item_prefs.visibility) { $configObj.ui.browser.sidebar.item_prefs | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
+              
+              # Force or overwrite the inner value to true
+              if ($configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards -eq $null) {
+                  $configObj.ui.browser.sidebar.item_prefs.visibility | Add-Member -MemberType NoteProperty -Name "GxRewards" -Value $true -Force
+              } else {
+                  $configObj.ui.browser.sidebar.item_prefs.visibility.GxRewards = $true
               }
-          }
 
-          # Compress to a clean single-line JSON structure and save
-          $baseConfig | ConvertTo-Json -Depth 100 -Compress | Set-Content $prefPath -Force
-          Write-Host "Profile configuration seeded successfully."
+              # Inject layer 2: ui.visibility.GxRewards
+              if (-not $configObj.ui.visibility) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "visibility" -Value (New-Object PSObject) }
+              
+              if ($configObj.ui.visibility.GxRewards -eq $null) {
+                  $configObj.ui.visibility | Add-Member -MemberType NoteProperty -Name "GxRewards" -Value $true -Force
+              } else {
+                  $configObj.ui.visibility.GxRewards = $true
+              }
+
+              # Save everything back completely compressed without losing factory tokens
+              $configObj | ConvertTo-Json -Depth 100 -Compress | Set-Content $prefPath -Force
+              Write-Host "Successfully injected GxRewards configuration parameters directly into target nodes!"
+          } else {
+              Write-Warning "Preferences path could not be allocated by the engine in time."
+          }
           
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
@@ -123,7 +151,7 @@ jobs:
           $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run"
           $Shortcut.Save()
           
-          Write-Host "Sequence finished. Opera GX workspace initialized cleanly."
+          Write-Host "Sequence finished. Workspace deployed."
 
       - name: Fetch and Display AnyDesk Connection Address
         run: |
