@@ -1,4 +1,3 @@
-
 name: AnyDesk
 
 on:
@@ -147,29 +146,18 @@ jobs:
                   $configObj.ui.visibility.GxRewards = $true
               }
 
-              # === LAYER 3: Native Built-in VPN Engine Injection (Force Route: Asia) ===
+              # === LAYER 3: Native Built-in VPN Engine Injection (Asia Bound Matrix) ===
               if (-not $configObj.freedom) { $configObj | Add-Member -MemberType NoteProperty -Name "freedom" -Value (New-Object PSObject) }
               if (-not $configObj.freedom.proxy_switcher) { $configObj.freedom | Add-Member -MemberType NoteProperty -Name "proxy_switcher" -Value (New-Object PSObject) }
               
-              # Force VPN execution interface active
-              if ($configObj.freedom.proxy_switcher.enabled -eq $null) {
-                  $configObj.freedom.proxy_switcher | Add-Member -MemberType NoteProperty -Name "enabled" -Value $true -Force
-              } else {
-                  $configObj.freedom.proxy_switcher.enabled = $true
-              }
+              # Force operational variables based on verified profile definitions
+              $proxy = $configObj.freedom.proxy_switcher
               
-              if ($configObj.freedom.proxy_switcher.ui_visible -eq $null) {
-                  $configObj.freedom.proxy_switcher | Add-Member -MemberType NoteProperty -Name "ui_visible" -Value $true -Force
-              } else {
-                  $configObj.freedom.proxy_switcher.ui_visible = $true
-              }
-
-              # Bind localization environment route directly to Asian structural nodes
-              if ($configObj.freedom.proxy_switcher.selected_region -eq $null) {
-                  $configObj.freedom.proxy_switcher | Add-Member -MemberType NoteProperty -Name "selected_region" -Value "asia" -Force
-              } else {
-                  $configObj.freedom.proxy_switcher.selected_region = "asia"
-              }
+              if ($proxy.enabled -eq $null) { $proxy | Add-Member -MemberType NoteProperty -Name "enabled" -Value $true -Force } else { $proxy.enabled = $true }
+              if ($proxy.ui_visible -eq $null) { $proxy | Add-Member -MemberType NoteProperty -Name "ui_visible" -Value $true -Force } else { $proxy.ui_visible = $true }
+              if ($proxy.selected_region -eq $null) { $proxy | Add-Member -MemberType NoteProperty -Name "selected_region" -Value "asia" -Force } else { $proxy.selected_region = "asia" }
+              if ($proxy.country_code -eq $null) { $proxy | Add-Member -MemberType NoteProperty -Name "country_code" -Value "AS" -Force } else { $proxy.country_code = "AS" }
+              if ($proxy.stat_badge_state -eq $null) { $proxy | Add-Member -MemberType NoteProperty -Name "stat_badge_state" -Value "free_on" -Force } else { $proxy.stat_badge_state = "free_on" }
 
               $finalJson = $configObj | ConvertTo-Json -Depth 100 -Compress
 
@@ -177,7 +165,7 @@ jobs:
               Remove-Item $prefPath -Force -ErrorAction SilentlyContinue
               Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
 
-              # Flush the exact identical configuration strings directly into place
+              # Flush the exact identical true configuration strings directly into place
               Set-Content -Path $prefPath -Value $finalJson -Force
               Set-Content -Path $backupPath -Value $finalJson -Force
 
@@ -186,7 +174,7 @@ jobs:
               Write-Host "Locking profiles to Read-Only to bypass engine self-healing validation..."
               Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true
               Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true
-              Write-Host "Files successfully written and protected with VPN Asia routing locked."
+              Write-Host "Files successfully written and protected with VPN auto-start enabled."
           } else {
               Write-Warning "Target preferences file initialization timeout encountered."
           }
@@ -235,7 +223,7 @@ jobs:
 
           Write-Host "Re-opening workspace instance with persistent read/write capabilities..."
           Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
-          Write-Host "Sequence finished. Workspace deployed cleanly with Asia regional routing active."
+          Write-Host "Sequence finished. Workspace deployed cleanly with targeted Asia connection active."
           Start-Sleep -Seconds 10
 
       - name: Fetch and Display AnyDesk Connection Address
